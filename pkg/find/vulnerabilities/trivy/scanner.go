@@ -7,8 +7,6 @@ import (
 
 	"github.com/aquasecurity/starboard/pkg/docker"
 	"github.com/aquasecurity/starboard/pkg/kube/secrets"
-	"k8s.io/apimachinery/pkg/api/errors"
-
 	"github.com/aquasecurity/starboard/pkg/scanners"
 	"k8s.io/klog"
 
@@ -27,17 +25,14 @@ import (
 	"k8s.io/utils/pointer"
 )
 
-const (
-	trivyVersion = "0.9.1"
-)
-
-var (
-	trivyImageRef = fmt.Sprintf("docker.io/aquasec/trivy:%s", trivyVersion)
-)
+type Config interface {
+	GetTrivyImageRef() string
+}
 
 // NewScanner constructs a new vulnerability Scanner with the specified options and Kubernetes client Interface.
-func NewScanner(opts kube.ScannerOpts, clientset kubernetes.Interface) *Scanner {
+func NewScanner(config Config, opts kube.ScannerOpts, clientset kubernetes.Interface) *Scanner {
 	return &Scanner{
+		config:    config,
 		opts:      opts,
 		clientset: clientset,
 		pods:      pod.NewPodManager(clientset),
@@ -46,6 +41,7 @@ func NewScanner(opts kube.ScannerOpts, clientset kubernetes.Interface) *Scanner 
 }
 
 type Scanner struct {
+	config    Config
 	opts      kube.ScannerOpts
 	clientset kubernetes.Interface
 	pods      *pod.Manager
@@ -133,15 +129,11 @@ func (s *Scanner) PrepareScanJob(_ context.Context, workload kube.Object, spec c
 	imagePullSecretName := jobName
 	imagePullSecretData := make(map[string][]byte)
 	var imagePullSecret *core.Secret
-	trivyImage, err := s.getTrivyImageRef()
-	if err != nil {
-		return nil, nil, err
-	}
 
 	initContainers := []core.Container{
 		{
 			Name:                     initContainerName,
-			Image:                    trivyImage,
+			Image:                    s.config.GetTrivyImageRef(),
 			ImagePullPolicy:          core.PullIfNotPresent,
 			TerminationMessagePolicy: core.TerminationMessageFallbackToLogsOnError,
 			Env: []core.EnvVar{
@@ -254,7 +246,7 @@ func (s *Scanner) PrepareScanJob(_ context.Context, workload kube.Object, spec c
 
 		scanJobContainers[i] = core.Container{
 			Name:                     c.Name,
-			Image:                    trivyImage,
+			Image:                    s.config.GetTrivyImageRef(),
 			ImagePullPolicy:          core.PullIfNotPresent,
 			TerminationMessagePolicy: core.TerminationMessageFallbackToLogsOnError,
 			Env:                      envs,
@@ -381,26 +373,11 @@ func (s *Scanner) GetVulnerabilityReportsByScanJob(ctx context.Context, job *bat
 		if err != nil {
 			return
 		}
-		reports[c.Name], err = s.converter.Convert(containerImages[c.Name], logReader)
+		reports[c.Name], err = s.converter.Convert(s.config, containerImages[c.Name], logReader)
 		_ = logReader.Close()
 		if err != nil {
 			return
 		}
 	}
 	return
-}
-
-func (s *Scanner) getTrivyImageRef() (string, error) {
-	cm, err := s.clientset.CoreV1().ConfigMaps(kube.NamespaceStarboard).Get(context.Background(), kube.ConfigMapStarboard, meta.GetOptions{})
-	if err != nil && errors.IsNotFound(err) {
-		return trivyImageRef, nil
-	}
-	if err != nil {
-		return "", err
-	}
-	imageRef := cm.Data["trivy.imageRef"]
-	if imageRef != "" {
-		return imageRef, nil
-	}
-	return trivyImageRef, nil
 }

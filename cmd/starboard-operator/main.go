@@ -199,7 +199,7 @@ func getEnabledScanner(config etc.Config) (scanner.VulnerabilityScanner, error) 
 		return nil, fmt.Errorf("invalid configuration: none vulnerability scanner enabled")
 	}
 	if config.ScannerTrivy.Enabled {
-		setupLog.Info("Using Trivy as vulnerability scanner", "version", config.ScannerTrivy.Version)
+		setupLog.Info("Using Trivy as vulnerability scanner", "image", config.ScannerTrivy.ImageRef)
 		return trivy.NewScanner(config.ScannerTrivy), nil
 	}
 	if config.ScannerAquaCSP.Enabled {

@@ -3,13 +3,14 @@ package kube
 import (
 	"context"
 	"fmt"
+	"github.com/aquasecurity/starboard/pkg/starboard"
 	"time"
 
 	"k8s.io/utils/pointer"
 
 	"k8s.io/apimachinery/pkg/labels"
 
-	starboard "github.com/aquasecurity/starboard/pkg/apis/aquasecurity/v1alpha1"
+	aquasecurityv1alpha1 "github.com/aquasecurity/starboard/pkg/apis/aquasecurity/v1alpha1"
 	core "k8s.io/api/core/v1"
 	rbac "k8s.io/api/rbac/v1"
 	ext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
@@ -23,193 +24,6 @@ import (
 const (
 	clusterRoleStarboard        = "starboard"
 	clusterRoleBindingStarboard = "starboard"
-)
-
-const (
-	polarisConfigYAML = `checks:
-  # reliability
-  multipleReplicasForDeployment: ignore
-  priorityClassNotSet: ignore
-  # resources
-  cpuRequestsMissing: warning
-  cpuLimitsMissing: warning
-  memoryRequestsMissing: warning
-  memoryLimitsMissing: warning
-  # images
-  tagNotSpecified: danger
-  pullPolicyNotAlways: ignore
-  # healthChecks
-  readinessProbeMissing: warning
-  livenessProbeMissing: warning
-  # networking
-  hostNetworkSet: warning
-  hostPortSet: warning
-  # security
-  hostIPCSet: danger
-  hostPIDSet: danger
-  notReadOnlyRootFilesystem: warning
-  privilegeEscalationAllowed: danger
-  runAsRootAllowed: warning
-  runAsPrivileged: danger
-  dangerousCapabilities: danger
-  insecureCapabilities: warning
-exemptions:
-  - controllerNames:
-    - kube-apiserver
-    - kube-proxy
-    - kube-scheduler
-    - etcd-manager-events
-    - kube-controller-manager
-    - kube-dns
-    - etcd-manager-main
-    rules:
-    - hostPortSet
-    - hostNetworkSet
-    - readinessProbeMissing
-    - livenessProbeMissing
-    - cpuRequestsMissing
-    - cpuLimitsMissing
-    - memoryRequestsMissing
-    - memoryLimitsMissing
-    - runAsRootAllowed
-    - runAsPrivileged
-    - notReadOnlyRootFilesystem
-    - hostPIDSet
-  - controllerNames:
-    - kube-flannel-ds
-    rules:
-    - notReadOnlyRootFilesystem
-    - runAsRootAllowed
-    - notReadOnlyRootFilesystem
-    - readinessProbeMissing
-    - livenessProbeMissing
-    - cpuLimitsMissing
-  - controllerNames:
-    - cert-manager
-    rules:
-    - notReadOnlyRootFilesystem
-    - runAsRootAllowed
-    - readinessProbeMissing
-    - livenessProbeMissing
-  - controllerNames:
-    - cluster-autoscaler
-    rules:
-    - notReadOnlyRootFilesystem
-    - runAsRootAllowed
-    - readinessProbeMissing
-  - controllerNames:
-    - vpa
-    rules:
-    - runAsRootAllowed
-    - readinessProbeMissing
-    - livenessProbeMissing
-    - notReadOnlyRootFilesystem
-  - controllerNames:
-    - datadog
-    rules:
-    - runAsRootAllowed
-    - readinessProbeMissing
-    - livenessProbeMissing
-    - notReadOnlyRootFilesystem
-  - controllerNames:
-    - nginx-ingress-controller
-    rules:
-    - privilegeEscalationAllowed
-    - insecureCapabilities
-    - runAsRootAllowed
-  - controllerNames:
-    - dns-controller
-    - datadog-datadog
-    - kube-flannel-ds
-    - kube2iam
-    - aws-iam-authenticator
-    - datadog
-    - kube2iam
-    rules:
-    - hostNetworkSet
-  - controllerNames:
-    - aws-iam-authenticator
-    - aws-cluster-autoscaler
-    - kube-state-metrics
-    - dns-controller
-    - external-dns
-    - dnsmasq
-    - autoscaler
-    - kubernetes-dashboard
-    - install-cni
-    - kube2iam
-    rules:
-    - readinessProbeMissing
-    - livenessProbeMissing
-  - controllerNames:
-    - aws-iam-authenticator
-    - nginx-ingress-default-backend
-    - aws-cluster-autoscaler
-    - kube-state-metrics
-    - dns-controller
-    - external-dns
-    - kubedns
-    - dnsmasq
-    - autoscaler
-    - tiller
-    - kube2iam
-    rules:
-    - runAsRootAllowed
-  - controllerNames:
-    - aws-iam-authenticator
-    - nginx-ingress-controller
-    - nginx-ingress-default-backend
-    - aws-cluster-autoscaler
-    - kube-state-metrics
-    - dns-controller
-    - external-dns
-    - kubedns
-    - dnsmasq
-    - autoscaler
-    - tiller
-    - kube2iam
-    rules:
-    - notReadOnlyRootFilesystem
-  - controllerNames:
-    - cert-manager
-    - dns-controller
-    - kubedns
-    - dnsmasq
-    - autoscaler
-    - insights-agent-goldilocks-vpa-install
-    - datadog
-    rules:
-    - cpuRequestsMissing
-    - cpuLimitsMissing
-    - memoryRequestsMissing
-    - memoryLimitsMissing
-  - controllerNames:
-    - kube2iam
-    - kube-flannel-ds
-    rules:
-    - runAsPrivileged
-  - controllerNames:
-    - kube-hunter
-    rules:
-    - hostPIDSet
-  - controllerNames:
-    - polaris
-    - kube-hunter
-    - goldilocks
-    - insights-agent-goldilocks-vpa-install
-    rules:
-    - notReadOnlyRootFilesystem
-  - controllerNames:
-    - insights-agent-goldilocks-controller
-    rules:
-    - livenessProbeMissing
-    - readinessProbeMissing
-  - controllerNames:
-    - insights-agent-goldilocks-vpa-install
-    - kube-hunter
-    rules:
-    - runAsRootAllowed
-`
 )
 
 var (
@@ -237,11 +51,7 @@ var (
 				"app.kubernetes.io/managed-by": "starboard",
 			},
 		},
-		Data: map[string]string{
-			"trivy.severity":      "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
-			"trivy.imageRef":      "docker.io/aquasec/trivy:0.9.1",
-			"polaris.config.yaml": polarisConfigYAML,
-		},
+		Data: starboard.GetDefaultConfig(),
 	}
 	clusterRole = &rbac.ClusterRole{
 		ObjectMeta: meta.ObjectMeta{
@@ -339,22 +149,22 @@ func NewCRManager(clientset kubernetes.Interface, clientsetext extapi.Apiextensi
 }
 
 func (m *crManager) Init(ctx context.Context) (err error) {
-	err = m.createOrUpdateCRD(ctx, &starboard.VulnerabilityReportsCRD)
+	err = m.createOrUpdateCRD(ctx, &aquasecurityv1alpha1.VulnerabilityReportsCRD)
 	if err != nil {
 		return
 	}
 
-	err = m.createOrUpdateCRD(ctx, &starboard.CISKubeBenchReportCRD)
+	err = m.createOrUpdateCRD(ctx, &aquasecurityv1alpha1.CISKubeBenchReportCRD)
 	if err != nil {
 		return
 	}
 
-	err = m.createOrUpdateCRD(ctx, &starboard.KubeHunterReportCRD)
+	err = m.createOrUpdateCRD(ctx, &aquasecurityv1alpha1.KubeHunterReportCRD)
 	if err != nil {
 		return
 	}
 
-	err = m.createOrUpdateCRD(ctx, &starboard.ConfigAuditReportCRD)
+	err = m.createOrUpdateCRD(ctx, &aquasecurityv1alpha1.ConfigAuditReportCRD)
 	if err != nil {
 		return
 	}
@@ -543,19 +353,19 @@ func (m *crManager) deleteCRD(ctx context.Context, name string) (err error) {
 }
 
 func (m *crManager) Cleanup(ctx context.Context) (err error) {
-	err = m.deleteCRD(ctx, starboard.VulnerabilityReportsCRName)
+	err = m.deleteCRD(ctx, aquasecurityv1alpha1.VulnerabilityReportsCRName)
 	if err != nil {
 		return
 	}
-	err = m.deleteCRD(ctx, starboard.CISKubeBenchReportCRName)
+	err = m.deleteCRD(ctx, aquasecurityv1alpha1.CISKubeBenchReportCRName)
 	if err != nil {
 		return
 	}
-	err = m.deleteCRD(ctx, starboard.KubeHunterReportCRName)
+	err = m.deleteCRD(ctx, aquasecurityv1alpha1.KubeHunterReportCRName)
 	if err != nil {
 		return
 	}
-	err = m.deleteCRD(ctx, starboard.ConfigAuditReportCRName)
+	err = m.deleteCRD(ctx, aquasecurityv1alpha1.ConfigAuditReportCRName)
 	if err != nil {
 		return
 	}
